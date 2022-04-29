@@ -1,0 +1,85 @@
+.section init
+    .temps r5, r6, r7
+    .zero r0
+
+.section data
+    .space 10000
+    rpnstack:
+
+.section rodata
+    jumptable:
+    .space 256
+
+.section init
+    push r3 on stack r2
+    push r4 on stack r2
+
+    r3 := 0 
+    
+    init_all:
+        if(r3 == 256) goto init_space
+        r4 := jumptable + r3
+        m[r0][r4] := input_error
+        r3 := r3 + 1
+        goto init_all
+
+    init_space:
+        r4 := '0'
+        m[r0][jumptable + ' '] := waiting
+        goto init_nums
+
+    init_nums:
+        if(r4 == 58) goto xxx
+        r3 := jumptable + r4
+        m[r0][r3] := digit
+        r4 := r4 + 1
+        goto init_nums
+
+     xxx:
+    #     halt
+
+    pop r4 off stack r2
+    pop r3 off stack r2
+
+.section text
+    main: 
+        push r1 on stack r2
+        push r3 on stack r2
+        push r4 on stack r2
+        output "In main\n"
+        r3 := 0             #Holds state, either "waiting" or "entering"
+        goto main_loop
+        pop r4 off stack r2
+        pop r3 off stack r2
+        pop r1 off stack r2
+        r5 := r1
+        r1 := 0
+        goto r5
+
+    main_loop:
+        r1 := input()
+
+        #Check if EOF ...
+
+        r4 := jumptable + r1
+        r5 := m[r0][r4]
+        goto r5
+
+
+    input_error:
+        output "unknown character\n"
+        goto waiting
+
+    digit:
+        output "Got character. About to push on stack\n"
+        goto entering
+
+    waiting:
+        r3 := 0
+        output "Waiting state\n" #remove later 
+
+    entering:
+        r3 := 1
+        output "entering state\n" #remove later
+
+
