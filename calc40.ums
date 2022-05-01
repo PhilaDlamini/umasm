@@ -1,5 +1,5 @@
 .section init
-    .temps r5, r6, r7
+    .temps r6, r7
     .zero r0
 
 .section data
@@ -15,9 +15,8 @@
     push r4 on stack r2
 
     r3 := 0 
-    
     init_all:
-        if(r3 == 256) goto init_space
+        if(r3 == 256) goto init_space using r5
         r4 := jumptable + r3
         m[r0][r4] := input_error
         r3 := r3 + 1
@@ -25,18 +24,32 @@
 
     init_space:
         r4 := '0'
-        m[r0][jumptable + ' '] := waiting
+        m[r0][jumptable + ' '] := space
         goto init_nums
 
     init_nums:
-        if(r4 == 58) goto xxx
+        if(r4 == 58) goto rest using r5
         r3 := jumptable + r4
         m[r0][r3] := digit
         r4 := r4 + 1
         goto init_nums
 
-     xxx:
-    #     halt
+    rest:
+    m[r0][jumptable + '\n'] := print_stack
+    m[r0][jumptable + '+'] := add
+    m[r0][jumptable + '-'] := subtract
+    m[r0][jumptable + '*'] := multiply
+    m[r0][jumptable + '/'] := divide
+    m[r0][jumptable + '|'] := or
+    m[r0][jumptable + '&'] := and
+    m[r0][jumptable + 'c'] := change_sign
+    m[r0][jumptable + '~'] := not
+    m[r0][jumptable + 's'] := swap
+    m[r0][jumptable + 'd'] := duplicate
+    m[r0][jumptable + 'p'] := discard
+    m[r0][jumptable + 'z'] := clear
+    
+
 
     pop r4 off stack r2
     pop r3 off stack r2
@@ -46,9 +59,9 @@
         push r1 on stack r2
         push r3 on stack r2
         push r4 on stack r2
-        output "In main\n"
-        r3 := 0             #Holds state, either "waiting" or "entering"
-        goto main_loop
+        r3 := 0                 #current state
+        r4 := rpnstack          #r4 holds the rpnstack
+        goto save_ret linking r1      #linking r1? When do we return here?
         pop r4 off stack r2
         pop r3 off stack r2
         pop r1 off stack r2
@@ -56,30 +69,196 @@
         r1 := 0
         goto r5
 
+    save_ret:
+        push r1 on stack r2
+
     main_loop:
         r1 := input()
-
-        #Check if EOF ...
-
-        r4 := jumptable + r1
-        r5 := m[r0][r4]
-        goto r5
-
+        if (r1 == 0xffffffff) goto EOF using r5
+        r5 := jumptable + r1
+        goto m[r0][r5]
 
     input_error:
-        output "unknown character\n"
-        goto waiting
+        output "Unknown character '"
+        output r1
+        output "'\n"
+        r3 := 0
+        goto main_loop using r5
+
+    space:
+        r3 := 0
+        goto main_loop using r5
 
     digit:
-        output "Got character. About to push on stack\n"
-        goto entering
+        if(r3 == 0) goto waiting using r5
+        goto entering using r5
 
     waiting:
-        r3 := 0
-        output "Waiting state\n" #remove later 
+        r1 := r1 - 48
+        push r1 on stack r4
+        r3 := 1
+        goto main_loop using r5
 
     entering:
-        r3 := 1
-        output "entering state\n" #remove later
+        pop r5 off stack r4
+        r5 := r5 * 10
+        r1 := r1 - 48
+        r5 := r5 + r1
+        push r5 on stack r4
+        goto main_loop using r5
+
+    EOF:
+       pop r1 off stack r2 
+       goto r1
+
+#The main commands in the progam 
+.section text 
+
+    #Clears the rpnstack
+    clear:
+    if(r4 == rpnstack) goto space using r5
+    pop stack r4
+    goto clear
+
+    #Prints the contents of the value stack
+    print_stack:  
+    r3 := r4
+
+    print_loop:
+    if(r3 == rpnstack) goto space using r5  #go to space to reset r3 to 0
+    r5 := m[r0][r3]
+    push r5 on stack r2
+    output ">>> "
+    goto printd linking r1    
+    output "\n"
+    pop r5 off stack r2
+    r3 := r3 + 1
+    goto print_loop
+
+    #Adds top two numbers
+    add:
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    pop r3 off stack r4
+    pop r5 off stack r4 
+    r3 := r5 + r3
+    push r3 on stack r4
+    goto space using r5
+
+    #Subtracts the two top numbers
+    subtract:
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    pop r3 off stack r4
+    pop r5 off stack r4 
+    r3 := r5 - r3
+    push r3 on stack r4
+    goto space using r5
 
 
+    #Multiplies the two top numbers
+    multiply:
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    pop r3 off stack r4
+    pop r5 off stack r4 
+    r3 := r5 * r3
+    push r3 on stack r4
+    goto space using r5
+
+    #Subtracts the two top numbers
+    divide:
+    push r1 on stack r2
+    r1 := 1
+    push r1 on stack r2
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    r3 := m[r0][r4]
+    if(r3 == 0) goto divide_error
+    pop stack r4
+    pop r5 off stack r4 
+    
+    if(r5 <s 0) goto to_unsigned_1 using r1
+
+    continue_check:
+    if(r3 <s 0) goto to_unsigned_2 using r1
+
+    continue_divide:
+    r3 := r5 / r3
+    pop r1 off stack r2
+    r3 := r3 * r1
+    push r3 on stack r4 
+    pop r1 off stack r2
+    goto space using r5
+
+    divide_error:
+    output "Division by zero\n"
+    goto space using r5
+
+    #Bitwise ORs the two numbers on the stack 
+    or:
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    pop r3 off stack r4
+    pop r5 off stack r4 
+    r3 := r5 | r3
+    push r3 on stack r4
+    goto space using r5
+
+    and:
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    pop r3 off stack r4
+    pop r5 off stack r4 
+    r3 := r5 & r3
+    push r3 on stack r4
+    goto space using r5
+
+    change_sign:
+    if(r4 >s rpnstack - 1) goto understack1 using r5
+    pop r5 off stack r4 
+    r5 := -r5
+    push r5 on stack r4
+    goto space using r5
+
+    not:
+    if(r4 >s rpnstack - 1) goto understack1 using r5
+    pop r5 off stack r4 
+    r5 := ~r5
+    push r5 on stack r4
+    goto space using r5
+
+    swap:
+    if(r4 >s rpnstack - 2) goto understack2 using r5
+    pop r3 off stack r4
+    pop r5 off stack r4 
+    push r3 on stack r4
+    push r5 on stack r4 
+    goto space using r5
+
+    duplicate:
+    if(r4 >s rpnstack - 1) goto understack1 using r5
+    pop r3 off stack r4
+    push r3 on stack r4
+    push r3 on stack r4
+    goto space using r5
+
+    discard:
+    if(r4 >s rpnstack - 1) goto understack1 using r5
+    pop stack r4
+    goto space using r5
+
+    understack2:
+    output "Stack underflow---expected at least 2 elements\n"
+    goto main_loop using r5
+
+
+    understack1:
+    output "Stack underflow---expected at least 1 element\n"
+    goto main_loop using r5
+
+    to_unsigned_1:
+    r1 := m[r0][r2]
+    m[r0][r2] := -r1
+    r5 := -r5
+    goto continue_check using r1
+
+    to_unsigned_2:
+    r1 := m[r0][r2]
+    m[r0][r2] := -r1
+    r3 := -r3
+    goto continue_divide using r1

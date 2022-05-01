@@ -1,1 +1,14 @@
-output 
+Notes
+    - Have the digit label check what the current state is and call each 
+    label (waiting or entering) accordingly
+    - All labels should return back to the main loop
+
+
+Questions for TAs:
+    - Since we can't rely on r5, r6, r7 holding what they're holding, can 
+    we ever use them. For example what if the "==" operator changes their values?
+    ** We tried and it resulted in undefined behavior
+    - When can we ever reliably use them?
+
+-2147483648
+-2147483648

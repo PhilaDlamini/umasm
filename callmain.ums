@@ -2,4 +2,5 @@
 .zero r0
 .section init
     goto main linking r1
+    output "returned back to initial caller\n"
     halt
