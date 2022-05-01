@@ -10,11 +10,14 @@
     jumptable:
     .space 256
 
+#This section initializes the jump table in the program
 .section init
     push r3 on stack r2
     push r4 on stack r2
-
     r3 := 0 
+
+    #Sets all slots of the jump table to point to the input_error label
+    #Register r3 is used as the index of the loop
     init_all:
         if(r3 == 256) goto init_space using r5
         r4 := jumptable + r3
@@ -49,8 +52,6 @@
     m[r0][jumptable + 'p'] := discard
     m[r0][jumptable + 'z'] := clear
     
-
-
     pop r4 off stack r2
     pop r3 off stack r2
 
@@ -152,7 +153,6 @@
     r3 := r5 - r3
     push r3 on stack r4
     goto space using r5
-
 
     #Multiplies the two top numbers
     multiply:
