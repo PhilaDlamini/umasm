@@ -1,23 +1,42 @@
-.section init
-    .temps r6, r7
-    .zero r0
+# Registers r6 and r7 are volatile registers 
+# Their contents are not saved and restored by procedure calls
+.temps r6, r7
+
+#Register r0 always holds zero
+.zero r0
+
+# Calling convention:
+# On entry to a procedure, register r1 holds the return address
+# Register r2 holds the stack pointer 
+# On entry to the procedure, push the values of registers r3 and r4 onto 
+#       stack r2 so they can be restored later
+# Also push the value of register r1 onto stack r2 so r1 the return address is
+#       not lost when r1 is set to the procedure's return value 
+# When the procedure is done, restore registers r3 and r4 (by poppoing from 
+#       the stack r2), place the procedure's return value in r1, and return 
+#       to the address in r1 (after restoring it from the call stack)
+#
 
 .section data
-    .space 10000
+    .space 10000           #initialize the rpnstack to hold 10000 elements
     rpnstack:
 
 .section rodata
-    jumptable:
-    .space 256
+    jumptable:          
+    .space 256             #initialize the jump table to hold 256 element
 
 #This section initializes the jump table in the program
 .section init
     push r3 on stack r2
     push r4 on stack r2
+
+    # In the init_all label, register r3 holds the current index in the 
+    # jump table
     r3 := 0 
 
-    #Sets all slots of the jump table to point to the input_error label
-    #Register r3 is used as the index of the loop
+    # This loop sets all slots of the jump table to point to the input_error
+    # label. The code associated with this label prints "input error" and goes 
+    # to the waiting state
     init_all:
         if(r3 == 256) goto init_space using r5
         r4 := jumptable + r3
@@ -25,19 +44,32 @@
         r3 := r3 + 1
         goto init_all
 
+    # This block updates the slot of the jump table corresponding to the space 
+    # character to point to the space label.
+    # The code associated with this returns the program to the waiting state
+    # In this block, r4 is also initialized to the ascii value of '0'
+    # Register r4 is used as as index in the loop of the next block
     init_space:
         r4 := '0'
-        m[r0][jumptable + ' '] := space
+        m[r0][jumptable + ' '] := waiting_state
         goto init_nums
 
+    # This block udpates slots of the jump table corresponding to the values 
+    # '0' - '9' to point to the digit label
+    # The code associated with this label pushes the digit passed input 
+    # onto the rpnstack
+    # r4 holds the current index
     init_nums:
-        if(r4 == 58) goto rest using r5
+        if(r4 == ':') goto init_rest using r5
         r3 := jumptable + r4
-        m[r0][r3] := digit
+        m[r0][r3] := start_or_continue_check
         r4 := r4 + 1
         goto init_nums
 
-    rest:
+    # This block udpates slots of the jump table corresponding to all other
+    # commands that the RPNCalculator recognises to point to the appropriate 
+    # labels
+    init_rest:
     m[r0][jumptable + '\n'] := print_stack
     m[r0][jumptable + '+'] := add
     m[r0][jumptable + '-'] := subtract
@@ -56,13 +88,30 @@
     pop r3 off stack r2
 
 .section text
+
+    # Procedure:        main
+    # Purpose:          Processes RPN Calculator commands
+    # Parameters:       None
+    # Returns:          Returns zero. This value is placed in register r1
+    # Error conditions: If the call stack overflows, the program will seg fault
+    # Assumptions:      None
+    # Side effects:     None
     main: 
         push r1 on stack r2
         push r3 on stack r2
         push r4 on stack r2
-        r3 := 0                 #current state
-        r4 := rpnstack          #r4 holds the rpnstack
-        goto save_ret linking r1      #linking r1? When do we return here?
+
+        # Register r3 holds the current state (either waiting, which is 0,
+        # or entering, which is 1)
+        # The program starts in the waiting state
+        r3 := 0            
+
+        # Register r4 holds the rpnstack stack pointer     
+        r4 := rpnstack   
+
+        # This procedure calls main_loop and thus must save the return adderss
+        goto save_ret linking r1     
+       
         pop r4 off stack r2
         pop r3 off stack r2
         pop r1 off stack r2
@@ -70,15 +119,20 @@
         r1 := 0
         goto r5
 
+    # Saves the return address from main (this couldn't have gone inside
+    # main_loop)
     save_ret:
         push r1 on stack r2
 
+    # Continues retrieves the next command and executes it
     main_loop:
         r1 := input()
         if (r1 == 0xffffffff) goto EOF using r5
         r5 := jumptable + r1
         goto m[r0][r5]
 
+    # This block executes for every unknown command passed in
+    # We print "unknown character" and retrieve the next character
     input_error:
         output "Unknown character '"
         output r1
@@ -86,21 +140,27 @@
         r3 := 0
         goto main_loop using r5
 
-    space:
+    # Goes to the waiting state and retrieves the next input
+    waiting_state:
         r3 := 0
         goto main_loop using r5
 
-    digit:
-        if(r3 == 0) goto waiting using r5
-        goto entering using r5
+    # Either starts a new digit or continues the one being 
+    # entered on the rpnstack depending on the current state
+    start_or_continue_check:
+        if(r3 == 0) goto start_digit using r5
+        goto continue_digit using r5
 
-    waiting:
+    # Stores the digit that was input on the value stack and 
+    # goes to the entering state
+    start_digit:
         r1 := r1 - 48
         push r1 on stack r4
         r3 := 1
         goto main_loop using r5
 
-    entering:
+    # Continues a numeral that was already pushed onto the rpnstack
+    continue_digit:
         pop r5 off stack r4
         r5 := r5 * 10
         r1 := r1 - 48
@@ -108,6 +168,7 @@
         push r5 on stack r4
         goto main_loop using r5
 
+    #Terminates the program
     EOF:
        pop r1 off stack r2 
        goto r1
@@ -117,7 +178,7 @@
 
     #Clears the rpnstack
     clear:
-    if(r4 == rpnstack) goto space using r5
+    if(r4 == rpnstack) goto waiting_state using r5
     pop stack r4
     goto clear
 
@@ -125,8 +186,10 @@
     print_stack:  
     r3 := r4
 
+    # The print loop used by the block above
+    # Register r3 is used as the index in this loop
     print_loop:
-    if(r3 == rpnstack) goto space using r5  #go to space to reset r3 to 0
+    if(r3 == rpnstack) goto waiting_state using r5 
     r5 := m[r0][r3]
     push r5 on stack r2
     output ">>> "
@@ -136,128 +199,146 @@
     r3 := r3 + 1
     goto print_loop
 
-    #Adds top two numbers
+    #Adds the top two numbers on the rpnstack and pushes the result
     add:
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     pop r3 off stack r4
     pop r5 off stack r4 
     r3 := r5 + r3
     push r3 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
-    #Subtracts the two top numbers
+    #Subtracts the top two numbers on the rpnstack and pushes the result
     subtract:
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     pop r3 off stack r4
     pop r5 off stack r4 
     r3 := r5 - r3
     push r3 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
-    #Multiplies the two top numbers
+    #Multiplies the top two numbers on the rpnstack and pushes the result
     multiply:
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     pop r3 off stack r4
     pop r5 off stack r4 
     r3 := r5 * r3
     push r3 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
-    #Subtracts the two top numbers
+    #Divides the top two numbers on the rpnstack and pushes the result
     divide:
     push r1 on stack r2
     r1 := 1
     push r1 on stack r2
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     r3 := m[r0][r4]
     if(r3 == 0) goto divide_error
     pop stack r4
     pop r5 off stack r4 
-    
-    if(r5 <s 0) goto to_unsigned_1 using r1
+    if(r5 <s 0) goto first_num_negative using r1
 
+    # Checks if the second number dividing by is negative
     continue_check:
-    if(r3 <s 0) goto to_unsigned_2 using r1
+    if(r3 <s 0) goto second_num_negative using r1
 
+    #Finishes the division
     continue_divide:
     r3 := r5 / r3
     pop r1 off stack r2
     r3 := r3 * r1
     push r3 on stack r4 
     pop r1 off stack r2
-    goto space using r5
+    goto waiting_state using r5
 
+    # This block is run when a divide by zero is attempted. 
+    # The code prints the error message and goes to the waiting state
     divide_error:
     output "Division by zero\n"
-    goto space using r5
+    goto waiting_state using r5
 
-    #Bitwise ORs the two numbers on the stack 
+    #Bitwise ORs the top two numbers on the stack and pushes the result
     or:
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     pop r3 off stack r4
     pop r5 off stack r4 
     r3 := r5 | r3
     push r3 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
+    #Bitwise ANDs the top two numbers on the stack and pushes the result
     and:
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     pop r3 off stack r4
     pop r5 off stack r4 
     r3 := r5 & r3
     push r3 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
+    #Negates the top number on the stack and pushes the result back
     change_sign:
-    if(r4 >s rpnstack - 1) goto understack1 using r5
+    if(r4 >s rpnstack - 1) goto stack_underflow_1 using r5
     pop r5 off stack r4 
     r5 := -r5
     push r5 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
+    #Nots the top number on the stack and pushes the result back
     not:
-    if(r4 >s rpnstack - 1) goto understack1 using r5
+    if(r4 >s rpnstack - 1) goto stack_underflow_1 using r5
     pop r5 off stack r4 
     r5 := ~r5
     push r5 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
+    #Swaps the the top two numbers on the rpnstack
     swap:
-    if(r4 >s rpnstack - 2) goto understack2 using r5
+    if(r4 >s rpnstack - 2) goto stack_underflow_2 using r5
     pop r3 off stack r4
     pop r5 off stack r4 
     push r3 on stack r4
     push r5 on stack r4 
-    goto space using r5
+    goto waiting_state using r5
 
+    #Duplicates the top number on the rpnstack
     duplicate:
-    if(r4 >s rpnstack - 1) goto understack1 using r5
+    if(r4 >s rpnstack - 1) goto stack_underflow_1 using r5
     pop r3 off stack r4
     push r3 on stack r4
     push r3 on stack r4
-    goto space using r5
+    goto waiting_state using r5
 
+    #Pops off the top number on the rpnstack
     discard:
-    if(r4 >s rpnstack - 1) goto understack1 using r5
+    if(r4 >s rpnstack - 1) goto stack_underflow_1 using r5
     pop stack r4
-    goto space using r5
+    goto waiting_state using r5
 
-    understack2:
+    # This block is run whenever an operation that needs two numbers is 
+    # requested but the stack has less than 2 elements  
+    # The code prints the error message and goes on to retrieve the next input
+    stack_underflow_2:
     output "Stack underflow---expected at least 2 elements\n"
     goto main_loop using r5
 
-
-    understack1:
+    # This block is run whenever an operation that needs one number is 
+    # requested but the stack is empty
+    # The code prints the error message and goes on to retrieve the next input
+    stack_underflow_1:
     output "Stack underflow---expected at least 1 element\n"
     goto main_loop using r5
 
-    to_unsigned_1:
+    # This block is run if we are doing signed division and the first number is 
+    # negative
+    first_num_negative:
     r1 := m[r0][r2]
     m[r0][r2] := -r1
     r5 := -r5
     goto continue_check using r1
 
-    to_unsigned_2:
+    # This block is run if we are doing signed division and the second number 
+    # is negative
+    second_num_negative:
     r1 := m[r0][r2]
     m[r0][r2] := -r1
     r3 := -r3

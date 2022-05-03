@@ -1,73 +1,122 @@
-.section init
-    .temps r6, r7
-    .zero r0
+# Registers r6 and r7 are volatile registers 
+# Their contents are not saved and restored by procedure calls
+.temps r6, r7
+
+# Register r0 always holds zero
+.zero r0
+
+# Registers r3 and r4 are non-volatile general purpose registers 
+# Their contents are saved and restored by procedure calls
+
+# Calling convention:
+# On entry to a procedure, register r1 holds the return address
+# Register r2 holds the stack pointer 
+# On entry to the procedure, push the values of registers r3 and r4 onto 
+#       stack r2 so they can be restored later
+# Also push the value of register r1 onto stack r2 so r1 the return address is
+#       not lost when r1 is set to the procedure's return value 
+# When the procedure is done, restore registers r3 and r4 (by poppoing from 
+#       the stack r2), place the procedure's return value in r1, and return 
+#       to the address in r1 (after restoring it from the call stack)
+#
 
 .section text
+
+    # Procedure:        printd
+    # Purpose:          Prints the decimal value of a Universal Machine word
+    # Parameters:       The word to print (placed on stack r2)
+    # Returns:          Returns zero. This value is placed in register r1
+    # Error conditions: None
+    # Assumptions:      the word to print was just pushed onto stack r2
+    # Side effects:     None
     printd:
         push r1 on stack r2
         push r3 on stack r2
         push r4 on stack r2
+
+        # The values held in register r3's evolve repeatedly as we push values
+        # on the call stack
+        # First r3 is used to push the word to print onto stack r2 (again)
         r3 := m[r0][r2 + 3]
         if(r3 <s 0) goto print_negative using r5
         if(r3 == 0) goto print_zero using r5
 
-    LA:
+    # Prints the word passed into the printd procedure
+    # The word is assumed positive
+    print_positive:
         push r3 on stack r2
+
+        #r3 is then used to push the divisor on stack r3
         r3 := 1000000000
         push r3 on stack r2
+
+        #Lastly, r3 is used to push a flag used then printing onto stack r2
         r3 := 0
         push r3 on stack r2
-        goto print_num linking r1
+        goto loop linking r1
 
         pop stack r2
         pop stack r2
         pop stack r2
-        
-    LB:
+
+    #Returns from the printd procedure 
+    return:
         pop r4 off stack r2
         pop r3 off stack r2
         pop r1 off stack r2
         r5 := r1
         r1 := 0
         goto r5
-        
-    print_num:
-        r3 := m[r0][r2 + 1]
+    
+    # Print loop. Iterates through each digit of the number to print
+    # and prints each one in turn. Leading zeros are discarded 
+    loop:
+        r3 := m[r0][r2 + 1]      #r3 holds the current divisor
         if(r3 == 0) goto r1
-        r3 := m[r0][r2 + 2]                 #Saves the main number
-        r4 := m[r0][r2 + 1]
+        r3 := m[r0][r2 + 2]      #r3 is updated to hold the number being printed
+        r4 := m[r0][r2 + 1]      #r4 holds the divisor
         r4 := r3 / r4
-        if(r4 != 0) goto set_to_print using r5
+        if(r4 != 0) goto allow_zero using r5
 
-        continue:
-        r3 := m[r0][r2]
+        # Checks to see if the current digit in r4 can be printed, and if so, 
+        # goes to print it
+        can_print:
+        r3 := m[r0][r2]         #r3 holds the print flag
         if(r3 == 1) goto print_digit using r5
  
+        # Updates the divisor and current number working with to allow for the 
+        # the next digit to be retrieved
         update_values:
-        r5 := m[r0][r2 + 1]
-        r4 := r5 * r4
-        r5 := r5 / 10
-        r3 := m[r0][r2 + 2]
+        r5 := m[r0][r2 + 1]     # r3 holds the current divisor
+        r4 := r5 * r4           # r4 holds the value of diving the
+        r5 := r5 / 10           #       number by the divisor
+        r3 := m[r0][r2 + 2]     #r3 holds the current number working with
         m[r0][r2 + 2] := r3 - r4
         m[r0][r2 + 1] := r5
-        goto print_num using r5
+        goto loop using r5
 
+    # Prints the digit in r5, then moves on to the next digit of the number
+    # being printed
     print_digit:
         r5 := r4 + '0'
         output r5
         goto update_values using r5
 
-    set_to_print:
+    #Updates the printing flag to allow zero to be printed
+    allow_zero:
         m[r0][r2] := 1
-        goto continue using r5
+        goto can_print using r5
 
-    print_zero:           #Special case: printing zero
+    #Prints the decimal value zero, then returns from this procedure
+    print_zero:           
         r5 := '0'
         output r5
-        goto LB
+        goto return
 
+    # Prints the decimal value in register r3, where the value is negative
+    # and returns
     print_negative:
         output '-'
         r3 := -r3
-        goto LA using r5
+        goto print_positive using r5
 

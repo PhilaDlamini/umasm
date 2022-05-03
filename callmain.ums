@@ -1,5 +1,12 @@
+# Registers r6 and r7 are volatile registers 
+# Their contents are not saved and restored by procedure calls
 .temps r6, r7
+
+# Register r0 always holds zero
 .zero r0
+
 .section init
+
+    # Register r1 saves the return address
     goto main linking r1
     halt
